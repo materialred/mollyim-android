@@ -15,7 +15,7 @@ import androidx.annotation.RequiresApi;
 
 import org.thoughtcrime.securesms.R;
 import org.thoughtcrime.securesms.database.NoExternalStorageException;
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
+import org.thoughtcrime.securesms.dependencies.AppDependencies;
 import org.thoughtcrime.securesms.permissions.PermissionCompat;
 import org.thoughtcrime.securesms.permissions.Permissions;
 
@@ -43,14 +43,39 @@ public class StorageUtil {
     return backups;
   }
 
-  public static File getBackupDirectory() throws NoExternalStorageException {
-    String appName = ApplicationDependencies.getApplication().getString(R.string.app_name);
-
+  public static File getOrCreateBackupV2Directory() throws NoExternalStorageException {
     File storage = Environment.getExternalStorageDirectory();
-    File signal  = new File(storage, appName.replace(" Staging", ".staging"));
-    File backups = new File(signal, "Backups");
+
+    if (!storage.canWrite()) {
+      throw new NoExternalStorageException();
+    }
+
+    File backups = getBackupV2Directory();
+
+    if (!backups.exists()) {
+      if (!backups.mkdirs()) {
+        throw new NoExternalStorageException("Unable to create backup directory...");
+      }
+    }
 
     return backups;
+  }
+
+  public static File getBackupDirectory() throws NoExternalStorageException {
+    File storage = Environment.getExternalStorageDirectory();
+    File signal  = new File(storage, getBackupDirectoryName());
+    return new File(signal, "Backups");
+  }
+
+  public static File getBackupV2Directory() throws NoExternalStorageException {
+    File storage = Environment.getExternalStorageDirectory();
+    return new File(storage, getBackupDirectoryName());
+  }
+
+  private static String getBackupDirectoryName() {
+    return AppDependencies.getApplication()
+                          .getString(R.string.app_name)
+                          .replace(" Staging", ".staging");
   }
 
   public static File getTileCacheDirectory(@NonNull Context context) {
@@ -105,11 +130,19 @@ public class StorageUtil {
 
   public static boolean canWriteToMediaStore() {
     return Build.VERSION.SDK_INT > 28 ||
-           Permissions.hasAll(ApplicationDependencies.getApplication(), Manifest.permission.WRITE_EXTERNAL_STORAGE);
+           Permissions.hasAll(AppDependencies.getApplication(), Manifest.permission.WRITE_EXTERNAL_STORAGE);
   }
 
-  public static boolean canReadFromMediaStore() {
-    return Permissions.hasAny(ApplicationDependencies.getApplication(), PermissionCompat.forImagesAndVideos());
+  public static boolean canReadAnyFromMediaStore() {
+    return Permissions.hasAny(AppDependencies.getApplication(), PermissionCompat.forImagesAndVideos());
+  }
+
+  public static boolean canOnlyReadSelectedMediaStore() {
+    return Build.VERSION.SDK_INT >= 34 && Permissions.hasAll(AppDependencies.getApplication(), Manifest.permission.READ_MEDIA_VISUAL_USER_SELECTED);
+  }
+
+  public static boolean canReadAllFromMediaStore() {
+    return Permissions.hasAll(AppDependencies.getApplication(), PermissionCompat.forImagesAndVideos());
   }
 
   public static @NonNull Uri getVideoUri() {

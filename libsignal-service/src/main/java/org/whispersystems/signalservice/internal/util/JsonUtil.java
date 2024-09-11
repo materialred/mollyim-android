@@ -44,6 +44,7 @@ public class JsonUtil {
 
   static {
     objectMapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+    com.fasterxml.jackson.module.kotlin.ExtensionsKt.registerKotlinModule(objectMapper);
   }
 
   public static String toJson(Object object) {

@@ -9,7 +9,7 @@ import org.signal.core.util.CursorUtil
 import org.signal.core.util.ExceptionUtil
 import org.signal.core.util.logging.Log
 import org.thoughtcrime.securesms.crypto.DatabaseSecretProvider
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies
+import org.thoughtcrime.securesms.dependencies.AppDependencies
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicReference
@@ -32,7 +32,7 @@ class SqlCipherErrorHandler(private val databaseName: String) : DatabaseErrorHan
     }
 
     try {
-      val result: DiagnosticResults = runDiagnostics(ApplicationDependencies.getApplication(), db)
+      val result: DiagnosticResults = runDiagnostics(AppDependencies.application, db)
       var lines: List<String> = result.logs.split("\n")
       lines = listOf("Database '$databaseName' corrupted!", "[sqlite] $message", "Diagnostics results:") + lines
 
@@ -171,7 +171,7 @@ class SqlCipherErrorHandler(private val databaseName: String) : DatabaseErrorHan
       } catch (e: Exception) {
         Log.w(TAG, "Failed to re-open as read-write!", e)
       }
-      SignalDatabase.messageSearch.fullyResetTables(db)
+      SignalDatabase.messageSearch.fullyResetTables(db, useTransaction = false)
     } catch (e: Throwable) {
       Log.w(TAG, "Failed to clear full text search index.", e)
     }

@@ -40,7 +40,7 @@ import org.thoughtcrime.securesms.database.DatabaseObserver;
 import org.thoughtcrime.securesms.database.MessageTable;
 import org.thoughtcrime.securesms.database.SignalDatabase;
 import org.thoughtcrime.securesms.database.model.MessageId;
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
+import org.thoughtcrime.securesms.dependencies.AppDependencies;
 import org.thoughtcrime.securesms.jobs.MultiDeviceViewedUpdateJob;
 import org.thoughtcrime.securesms.jobs.SendViewedReceiptJob;
 import org.thoughtcrime.securesms.mms.PartUriParser;
@@ -91,7 +91,7 @@ public class VoiceNotePlaybackService extends MediaSessionService {
 
     setMediaNotificationProvider(new VoiceNoteMediaNotificationProvider(this));
     setListener(new MediaSessionServiceListener());
-    ApplicationDependencies.getDatabaseObserver().registerAttachmentObserver(attachmentDeletionObserver);
+    AppDependencies.getDatabaseObserver().registerAttachmentObserver(attachmentDeletionObserver);
   }
 
   @Override
@@ -106,7 +106,7 @@ public class VoiceNotePlaybackService extends MediaSessionService {
   public void onDestroy() {
     player.removeListener(playerEventListener);
     if (mediaSession != null) {
-      ApplicationDependencies.getDatabaseObserver().unregisterObserver(attachmentDeletionObserver);
+      AppDependencies.getDatabaseObserver().unregisterObserver(attachmentDeletionObserver);
       keyClearedReceiver.unregister();
       player.release();
       mediaSession.release();
@@ -243,6 +243,10 @@ public class VoiceNotePlaybackService extends MediaSessionService {
    * This method will catch that exception and attempt to disable the duplicated broadcast receiver in the hopes of getting the package manager to
    * report only 1, avoiding the error.
    * If that doesn't work, it returns null, signaling the {@link MediaSession} cannot be built on this device.
+   * The opposite problem also appears to happen: the device reports that it cannot assign the media button receiver, which is required by AndroidX Media3.
+   * This is despite the fact that Media3 confirms the presence of the receiver before attempting to bind.
+   * In this case, the system throws an {@link IllegalArgumentException}, which we catch. Then we also disable the existing receiver, which should be the same
+   * as if we had never had the received in the first place, which should cause Media3 to abort trying to bind to it and allow it to proceed.
    *
    * @return the built MediaSession, or null if the session cannot be built.
    */
@@ -254,7 +258,7 @@ public class VoiceNotePlaybackService extends MediaSessionService {
 
     try {
       return new MediaSession.Builder(this, player).setCallback(voiceNotePlayerCallback).setId(SESSION_ID).build();
-    } catch (IllegalStateException e) {
+    } catch (IllegalStateException | IllegalArgumentException e) {
 
       if (isRetry) {
         Log.e(TAG, "Unable to create media session, even after retry.", e);
@@ -330,10 +334,10 @@ public class VoiceNotePlaybackService extends MediaSessionService {
         MessageTable.MarkedMessageInfo markedMessageInfo = messageDatabase.setIncomingMessageViewed(messageId);
 
         if (markedMessageInfo != null) {
-          ApplicationDependencies.getJobManager().add(new SendViewedReceiptJob(markedMessageInfo.getThreadId(),
-                                                                               recipientId,
-                                                                               markedMessageInfo.getSyncMessageId().getTimetamp(),
-                                                                               new MessageId(messageId)));
+          AppDependencies.getJobManager().add(new SendViewedReceiptJob(markedMessageInfo.getThreadId(),
+                                                                       recipientId,
+                                                                       markedMessageInfo.getSyncMessageId().getTimetamp(),
+                                                                       new MessageId(messageId)));
           MultiDeviceViewedUpdateJob.enqueue(Collections.singletonList(markedMessageInfo.getSyncMessageId()));
         }
       });

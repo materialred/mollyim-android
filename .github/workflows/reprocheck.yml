@@ -1,9 +1,9 @@
-name: Reproducible build
+name: Reproducible Build
 
 on:
   workflow_dispatch:
     inputs:
-      tag_name:
+      version:
         description: "Enter the version to check"
         required: true
   release:
@@ -14,37 +14,57 @@ permissions:
   contents: read # to fetch code (actions/checkout)
 
 env:
-  TAG_NAME: "${{ github.event.inputs.tag_name || github.event.release.tag_name }}"
+  TAG_REF: "${{ github.event.inputs.version || github.event.release.tag_name }}"
+  BUILD_ENV_FILE: ${{ vars.BUILD_ENV_FILE || 'beta-stable.env' }}
 
 jobs:
   build:
     name: Build new
     runs-on: ubuntu-22.04
+
     env:
       GRADLE_OPTS: "-Dorg.gradle.project.kotlin.compiler.execution.strategy=in-process"
-      CI_ENV_FILE: ${{ vars.CI_ENV_FILE || 'beta-stable.env' }}
-      CI_MAPS_API_KEY: ${{ secrets.MAPS_API_KEY }}
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
-          ref: "${{ env.TAG_NAME }}"
+          ref: "${{ env.TAG_REF }}"
 
       - name: Set up builder image
-        run: docker-compose build
+        run: docker compose build
         working-directory: reproducible-builds
+
+      - name: Export CI environment variables
+        run: |
+          cp -v "ci/$BUILD_ENV_FILE" .env
+          for var in APP_TITLE APP_FILENAME PACKAGE_ID \
+                     BUILD_VARIANTS FORCE_INTERNAL_USER_FLAG \
+                     MAPS_API_KEY; do
+            if [ -n "${!var}" ]; then
+              echo "Setting CI_$var=${!var}"
+              echo "CI_$var=${!var}" >> $GITHUB_ENV
+            fi
+          done
+        working-directory: reproducible-builds
+        env:
+          APP_TITLE: ${{ vars.CI_APP_TITLE }}
+          APP_FILENAME: ${{ vars.CI_APP_FILENAME }}
+          PACKAGE_ID: ${{ vars.CI_PACKAGE_ID }}
+          BUILD_VARIANTS: ${{ vars.CI_BUILD_VARIANTS }}
+          FORCE_INTERNAL_USER_FLAG: ${{ vars.CI_FORCE_INTERNAL_USER_FLAG }}
+          MAPS_API_KEY: ${{ vars.CI_MAPS_API_KEY }}
 
       - name: Build release
-        run: docker-compose --env-file "ci/$CI_ENV_FILE" run assemble
+        run: docker compose run assemble
         working-directory: reproducible-builds
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: new
           path: reproducible-builds/outputs/apk/*/release/*.apk
           if-no-files-found: error
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: apkdiff
           path: reproducible-builds/apkdiff/apkdiff.py
@@ -57,16 +77,16 @@ jobs:
       apks: "${{ steps.set.outputs.apks }}"
 
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
         with:
-          ref: "${{ env.TAG_NAME }}"
+          ref: "${{ env.TAG_REF }}"
 
       - name: Download published APKs
-        run: gh release download --pattern '*.apk' "$TAG_NAME"
+        run: gh release download --pattern '*.apk' "$TAG_REF"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
-      - uses: actions/upload-artifact@v3
+      - uses: actions/upload-artifact@v4
         with:
           name: original
           path: "*.apk"
@@ -90,7 +110,7 @@ jobs:
         apk-file: ${{ fromJSON(needs.download.outputs.apks) }}
 
     steps:
-      - uses: actions/download-artifact@v3
+      - uses: actions/download-artifact@v4
 
       - name: Install diffuse
         run: |

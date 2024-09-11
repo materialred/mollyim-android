@@ -23,6 +23,7 @@ public class SubscriptionsConfiguration {
 
   public static final int               BOOST_LEVEL        = 1;
   public static final int               GIFT_LEVEL         = 100;
+  public static final int               BACKUPS_LEVEL      = 201;
   public static final HashSet<Integer>  SUBSCRIPTION_LEVELS = new HashSet<>(Arrays.asList(500, 1000, 2000));
 
   @JsonProperty("currencies")
@@ -33,6 +34,9 @@ public class SubscriptionsConfiguration {
 
   @JsonProperty("sepaMaximumEuros")
   private BigDecimal sepaMaximumEuros;
+
+  @JsonProperty("backup")
+  private BackupConfiguration backupConfiguration;
 
   public static class CurrencyConfiguration {
     @JsonProperty("minimum")
@@ -87,6 +91,31 @@ public class SubscriptionsConfiguration {
     }
   }
 
+  public static class BackupConfiguration {
+    @JsonProperty("levels")
+    private Map<Integer, BackupLevelConfiguration> backupLevelConfigurationMap;
+
+    @JsonProperty("backupFreeTierMediaDays")
+    private int freeTierMediaDays;
+
+    public Map<Integer, BackupLevelConfiguration> getBackupLevelConfigurationMap() {
+      return backupLevelConfigurationMap;
+    }
+
+    public int getFreeTierMediaDays() {
+      return freeTierMediaDays;
+    }
+  }
+
+  public static class BackupLevelConfiguration {
+    @JsonProperty("storageAllowanceBytes")
+    private long storageAllowanceBytes;
+
+    public long getStorageAllowanceBytes() {
+      return storageAllowanceBytes;
+    }
+  }
+
   public Map<String, CurrencyConfiguration> getCurrencies() {
     return currencies;
   }
@@ -97,5 +126,9 @@ public class SubscriptionsConfiguration {
 
   public BigDecimal getSepaMaximumEuros() {
     return sepaMaximumEuros;
+  }
+
+  public BackupConfiguration getBackupConfiguration() {
+    return backupConfiguration;
   }
 }

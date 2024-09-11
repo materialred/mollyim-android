@@ -19,7 +19,6 @@ import org.thoughtcrime.securesms.net.StandardUserAgentInterceptor
 import org.whispersystems.signalservice.api.push.TrustStore
 import org.whispersystems.signalservice.internal.configuration.SignalCdnUrl
 import org.whispersystems.signalservice.internal.configuration.SignalCdsiUrl
-import org.whispersystems.signalservice.internal.configuration.SignalKeyBackupServiceUrl
 import org.whispersystems.signalservice.internal.configuration.SignalServiceConfiguration
 import org.whispersystems.signalservice.internal.configuration.SignalServiceUrl
 import org.whispersystems.signalservice.internal.configuration.SignalStorageUrl
@@ -34,7 +33,7 @@ open class SignalServiceNetworkAccess(context: Context) {
   companion object {
     private val TAG = Log.tag(SignalServiceNetworkAccess::class.java)
 
-    // MOLLY: DNS moved to Network object. Add new hostnames to HOSTNAMES below.
+    // MOLLY: DNS object moved to Networking.kt
 
     private fun String.stripProtocol(): String {
       return this.removePrefix("https://")
@@ -47,7 +46,11 @@ open class SignalServiceNetworkAccess(context: Context) {
     private const val COUNTRY_CODE_IRAN = 98
     private const val COUNTRY_CODE_CUBA = 53
     private const val COUNTRY_CODE_UZBEKISTAN = 998
+    private const val COUNTRY_CODE_RUSSIA = 7
+    private const val COUNTRY_CODE_VENEZUELA = 58
+    private const val COUNTRY_CODE_PAKISTAN = 92
 
+    // MOLLY: Add new hostnames and URLs to HOSTNAMES below
     private const val G_HOST = "reflector-nrgwuv7kwq-uc.a.run.app"
     private const val F_SERVICE_HOST = "chat-signal.global.ssl.fastly.net"
     private const val F_STORAGE_HOST = "storage.signal.org.global.prod.fastly.net"
@@ -56,8 +59,6 @@ open class SignalServiceNetworkAccess(context: Context) {
     private const val F_CDN3_HOST = "cdn3-signal.global.ssl.fastly.net"
     private const val F_CDSI_HOST = "cdsi-signal.global.ssl.fastly.net"
     private const val F_SVR2_HOST = "svr2-signal.global.ssl.fastly.net"
-    private const val F_KBS_HOST = "api.backup.signal.org.global.prod.fastly.net"
-
     private const val HTTPS_WWW_GOOGLE_COM = "https://www.google.com"
     private const val HTTPS_ANDROID_CLIENTS_GOOGLE_COM = "https://android.clients.google.com"
     private const val HTTPS_CLIENTS_3_GOOGLE_COM = "https://clients3.google.com"
@@ -72,6 +73,8 @@ open class SignalServiceNetworkAccess(context: Context) {
     private const val HTTPS_WWW_GOOGLE_COM_OM = "https://www.google.com.om"
     private const val HTTPS_WWW_GOOGLE_COM_QA = "https://www.google.com.qa"
     private const val HTTPS_WWW_GOOGLE_CO_UZ = "https://www.google.co.uz"
+    private const val HTTPS_WWW_GOOGLE_CO_VE = "https://www.google.co.ve"
+    private const val HTTPS_WWW_GOOGLE_COM_PK = "https://www.google.com.pk"
 
     @JvmField
     val HOSTNAMES = setOf(
@@ -94,7 +97,6 @@ open class SignalServiceNetworkAccess(context: Context) {
       F_CDN3_HOST,
       F_CDSI_HOST,
       F_SVR2_HOST,
-      F_KBS_HOST,
       HTTPS_WWW_GOOGLE_COM.stripProtocol(),
       HTTPS_ANDROID_CLIENTS_GOOGLE_COM.stripProtocol(),
       HTTPS_CLIENTS_3_GOOGLE_COM.stripProtocol(),
@@ -109,6 +111,8 @@ open class SignalServiceNetworkAccess(context: Context) {
       HTTPS_WWW_GOOGLE_COM_OM.stripProtocol(),
       HTTPS_WWW_GOOGLE_COM_QA.stripProtocol(),
       HTTPS_WWW_GOOGLE_CO_UZ.stripProtocol(),
+      HTTPS_WWW_GOOGLE_CO_VE.stripProtocol(),
+      HTTPS_WWW_GOOGLE_COM_PK.stripProtocol(),
     )
 
     private val GMAPS_CONNECTION_SPEC = ConnectionSpec.Builder(ConnectionSpec.MODERN_TLS)
@@ -241,11 +245,18 @@ open class SignalServiceNetworkAccess(context: Context) {
     COUNTRY_CODE_UZBEKISTAN to buildGConfiguration(
       listOf(HostConfig(HTTPS_WWW_GOOGLE_CO_UZ, G_HOST, GMAIL_CONNECTION_SPEC)) + baseGHostConfigs
     ),
+    COUNTRY_CODE_VENEZUELA to buildGConfiguration(
+      listOf(HostConfig(HTTPS_WWW_GOOGLE_CO_VE, G_HOST, GMAIL_CONNECTION_SPEC)) + baseGHostConfigs
+    ),
+    COUNTRY_CODE_PAKISTAN to buildGConfiguration(
+      listOf(HostConfig(HTTPS_WWW_GOOGLE_COM_PK, G_HOST, GMAIL_CONNECTION_SPEC)) + baseGHostConfigs
+    ),
     COUNTRY_CODE_IRAN to fConfig,
-    COUNTRY_CODE_CUBA to fConfig
+    COUNTRY_CODE_CUBA to fConfig,
+    COUNTRY_CODE_RUSSIA to fConfig
   )
 
-  private val defaultCensoredConfiguration: SignalServiceConfiguration = buildGConfiguration(baseGHostConfigs)
+  private val defaultCensoredConfiguration: SignalServiceConfiguration = buildGConfiguration(baseGHostConfigs) + fConfig
 
   private val defaultCensoredCountryCodes: Set<Int> = setOf(
     COUNTRY_CODE_EGYPT,
@@ -254,7 +265,10 @@ open class SignalServiceNetworkAccess(context: Context) {
     COUNTRY_CODE_QATAR,
     COUNTRY_CODE_IRAN,
     COUNTRY_CODE_CUBA,
-    COUNTRY_CODE_UZBEKISTAN
+    COUNTRY_CODE_UZBEKISTAN,
+    COUNTRY_CODE_RUSSIA,
+    COUNTRY_CODE_VENEZUELA,
+    COUNTRY_CODE_PAKISTAN
   )
 
   open val uncensoredConfiguration: SignalServiceConfiguration = SignalServiceConfiguration(
@@ -277,7 +291,7 @@ open class SignalServiceNetworkAccess(context: Context) {
   )
 
   open fun getConfiguration(): SignalServiceConfiguration {
-    return getConfiguration(SignalStore.account().e164)
+    return getConfiguration(SignalStore.account.e164)
   }
 
   open fun getConfiguration(e164: String?): SignalServiceConfiguration {
@@ -287,7 +301,7 @@ open class SignalServiceNetworkAccess(context: Context) {
 
     val countryCode: Int = PhoneNumberUtil.getInstance().parse(e164, null).countryCode
 
-    return when (SignalStore.settings().censorshipCircumventionEnabled) {
+    return when (SignalStore.settings.censorshipCircumventionEnabled) {
       SettingsValues.CensorshipCircumventionEnabled.ENABLED -> {
         censorshipConfiguration[countryCode] ?: defaultCensoredConfiguration
       }
@@ -305,7 +319,7 @@ open class SignalServiceNetworkAccess(context: Context) {
   }
 
   fun isCensored(): Boolean {
-    return isCensored(SignalStore.account().e164)
+    return isCensored(SignalStore.account.e164)
   }
 
   fun isCensored(number: String?): Boolean {
@@ -323,7 +337,6 @@ open class SignalServiceNetworkAccess(context: Context) {
     val cdnUrls: Array<SignalCdnUrl> = hostConfigs.map { SignalCdnUrl("${it.baseUrl}/cdn", it.host, gTrustStore, it.connectionSpec) }.toTypedArray()
     val cdn2Urls: Array<SignalCdnUrl> = hostConfigs.map { SignalCdnUrl("${it.baseUrl}/cdn2", it.host, gTrustStore, it.connectionSpec) }.toTypedArray()
     val cdn3Urls: Array<SignalCdnUrl> = hostConfigs.map { SignalCdnUrl("${it.baseUrl}/cdn3", it.host, gTrustStore, it.connectionSpec) }.toTypedArray()
-    val kbsUrls: Array<SignalKeyBackupServiceUrl> = hostConfigs.map { SignalKeyBackupServiceUrl("${it.baseUrl}/backup", it.host, gTrustStore, it.connectionSpec) }.toTypedArray()
     val storageUrls: Array<SignalStorageUrl> = hostConfigs.map { SignalStorageUrl("${it.baseUrl}/storage", it.host, gTrustStore, it.connectionSpec) }.toTypedArray()
     val cdsiUrls: Array<SignalCdsiUrl> = hostConfigs.map { SignalCdsiUrl("${it.baseUrl}/cdsi", it.host, gTrustStore, it.connectionSpec) }.toTypedArray()
     val svr2Urls: Array<SignalSvr2Url> = hostConfigs.map { SignalSvr2Url("${it.baseUrl}/svr2", gTrustStore, it.host, it.connectionSpec) }.toTypedArray()

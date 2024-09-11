@@ -49,10 +49,12 @@ public class GroupNetworkUnavailableActionProcessor extends WebRtcActionProcesso
 
     byte[]    groupId   = currentState.getCallInfoState().getCallRecipient().requireGroupId().getDecodedId();
     GroupCall groupCall = webRtcInteractor.getCallManager().createGroupCall(groupId,
-                                                                            SignalStore.internalValues().groupCallingServer(),
+                                                                            SignalStore.internal().groupCallingServer(),
+                                                                            WebRtcUtil.getProxyInfo(),
                                                                             new byte[0],
                                                                             null,
                                                                             RingRtcDynamicConfiguration.getAudioProcessingMethod(),
+                                                                            SignalStore.internal().callingEnableOboeAdm(),
                                                                             webRtcInteractor.getGroupCallObserver());
 
     return currentState.builder()

@@ -10,7 +10,7 @@ import android.database.sqlite.SQLiteDatabase
 import androidx.core.content.contentValuesOf
 import org.signal.core.util.requireLong
 import org.signal.core.util.select
-import org.thoughtcrime.securesms.backup.v2.BackupState
+import org.thoughtcrime.securesms.backup.v2.ImportState
 import org.thoughtcrime.securesms.backup.v2.proto.AdHocCall
 import org.thoughtcrime.securesms.database.CallTable
 import org.thoughtcrime.securesms.database.RecipientTable
@@ -26,7 +26,7 @@ fun CallTable.getAdhocCallsForBackup(): CallLogIterator {
   )
 }
 
-fun CallTable.restoreCallLogFromBackup(call: AdHocCall, backupState: BackupState) {
+fun CallTable.restoreCallLogFromBackup(call: AdHocCall, importState: ImportState) {
   val event = when (call.state) {
     AdHocCall.State.GENERIC -> CallTable.Event.GENERIC_GROUP_CALL
     AdHocCall.State.UNKNOWN_STATE -> CallTable.Event.GENERIC_GROUP_CALL
@@ -34,11 +34,11 @@ fun CallTable.restoreCallLogFromBackup(call: AdHocCall, backupState: BackupState
 
   val values = contentValuesOf(
     CallTable.CALL_ID to call.callId,
-    CallTable.PEER to backupState.backupToLocalRecipientId[call.recipientId]!!.serialize(),
+    CallTable.PEER to importState.remoteToLocalRecipientId[call.recipientId]!!.serialize(),
     CallTable.TYPE to CallTable.Type.serialize(CallTable.Type.AD_HOC_CALL),
     CallTable.DIRECTION to CallTable.Direction.serialize(CallTable.Direction.OUTGOING),
     CallTable.EVENT to CallTable.Event.serialize(event),
-    CallTable.TIMESTAMP to call.startedCallTimestamp
+    CallTable.TIMESTAMP to call.callTimestamp
   )
 
   writableDatabase.insert(CallTable.TABLE_NAME, SQLiteDatabase.CONFLICT_IGNORE, values)
@@ -64,7 +64,7 @@ class CallLogIterator(private val cursor: Cursor) : Iterator<AdHocCall?>, Closea
       callId = callId,
       recipientId = cursor.requireLong(CallTable.PEER),
       state = AdHocCall.State.GENERIC,
-      startedCallTimestamp = cursor.requireLong(CallTable.TIMESTAMP)
+      callTimestamp = cursor.requireLong(CallTable.TIMESTAMP)
     )
   }
 

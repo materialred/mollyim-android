@@ -89,6 +89,14 @@ import org.thoughtcrime.securesms.database.helpers.migration.V228_AddNameCollisi
 import org.thoughtcrime.securesms.database.helpers.migration.V229_MarkMissedCallEventsNotified
 import org.thoughtcrime.securesms.database.helpers.migration.V230_UnreadCountIndices
 import org.thoughtcrime.securesms.database.helpers.migration.V231_ArchiveThumbnailColumns
+import org.thoughtcrime.securesms.database.helpers.migration.V232_CreateInAppPaymentTable
+import org.thoughtcrime.securesms.database.helpers.migration.V233_FixInAppPaymentTableDefaultNotifiedValue
+import org.thoughtcrime.securesms.database.helpers.migration.V234_ThumbnailRestoreStateColumn
+import org.thoughtcrime.securesms.database.helpers.migration.V235_AttachmentUuidColumn
+import org.thoughtcrime.securesms.database.helpers.migration.V236_FixInAppSubscriberCurrencyIfAble
+import org.thoughtcrime.securesms.database.helpers.migration.V237_ResetGroupForceUpdateTimestamps
+import org.thoughtcrime.securesms.database.helpers.migration.V238_AddGroupSendEndorsementsColumns
+import org.thoughtcrime.securesms.database.helpers.migration.V239_MessageFullTextSearchEmojiSupport
 
 /**
  * Contains all of the database migrations for [SignalDatabase]. Broken into a separate file for cleanliness.
@@ -181,10 +189,19 @@ object SignalDatabaseMigrations {
     228 to V228_AddNameCollisionTables,
     229 to V229_MarkMissedCallEventsNotified,
     230 to V230_UnreadCountIndices,
-    231 to V231_ArchiveThumbnailColumns
+    231 to V231_ArchiveThumbnailColumns,
+    232 to V232_CreateInAppPaymentTable,
+    233 to V233_FixInAppPaymentTableDefaultNotifiedValue,
+    234 to V234_ThumbnailRestoreStateColumn,
+    235 to V235_AttachmentUuidColumn,
+    236 to V236_FixInAppSubscriberCurrencyIfAble,
+    237 to V237_ResetGroupForceUpdateTimestamps,
+    // MOLLY: Use 238 to fix the incorrect JSON serialization of AttachmentId
+    238 to V238_AddGroupSendEndorsementsColumns,
+    239 to V239_MessageFullTextSearchEmojiSupport
   )
 
-  const val DATABASE_VERSION = 231
+  const val DATABASE_VERSION = 239
 
   @JvmStatic
   fun migrate(context: Application, db: SQLiteDatabase, oldVersion: Int, newVersion: Int) {

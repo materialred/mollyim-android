@@ -12,6 +12,7 @@ import org.signal.libsignal.protocol.InvalidMessageException;
 import org.signal.libsignal.protocol.logging.Log;
 import org.signal.libsignal.zkgroup.InvalidInputException;
 import org.signal.libsignal.zkgroup.profiles.ProfileKey;
+import org.whispersystems.signalservice.api.messages.SignalServiceAttachment;
 import org.whispersystems.signalservice.api.messages.SignalServiceAttachmentStream;
 import org.whispersystems.signalservice.api.push.ServiceId;
 import org.whispersystems.signalservice.api.push.ServiceId.ACI;
@@ -46,23 +47,23 @@ public class DeviceContactsInputStream extends ChunkedInputStream {
       throw new IOException("Missing contact address!");
     }
 
-    Optional<ACI>                           aci           = Optional.ofNullable(ACI.parseOrNull(details.aci));
-    Optional<String>                        e164          = Optional.ofNullable(details.number);
-    Optional<String>                        name          = Optional.ofNullable(details.name);
-    Optional<SignalServiceAttachmentStream> avatar        = Optional.empty();
-    Optional<String>                        color         = details.color != null ? Optional.of(details.color) : Optional.empty();
-    Optional<VerifiedMessage>               verified      = Optional.empty();
-    Optional<ProfileKey>                    profileKey    = Optional.empty();
-    Optional<Integer>                       expireTimer   = Optional.empty();
-    Optional<Integer>                       inboxPosition = Optional.empty();
-    boolean                                 archived      = false;
+    Optional<ACI>                 aci           = Optional.ofNullable(ACI.parseOrNull(details.aci));
+    Optional<String>              e164          = Optional.ofNullable(details.number);
+    Optional<String>              name          = Optional.ofNullable(details.name);
+    Optional<DeviceContactAvatar> avatar        = Optional.empty();
+    Optional<String>              color         = details.color != null ? Optional.of(details.color) : Optional.empty();
+    Optional<VerifiedMessage>     verified      = Optional.empty();
+    Optional<ProfileKey>          profileKey    = Optional.empty();
+    Optional<Integer>             expireTimer   = Optional.empty();
+    Optional<Integer>             inboxPosition = Optional.empty();
+    boolean                       archived      = false;
 
-    if (details.avatar != null) {
+    if (details.avatar != null && details.avatar.length != null) {
       long        avatarLength      = details.avatar.length;
       InputStream avatarStream      = new LimitedInputStream(in, avatarLength);
-      String      avatarContentType = details.avatar.contentType;
+      String      avatarContentType = details.avatar.contentType != null ? details.avatar.contentType : "image/*";
 
-      avatar = Optional.of(new SignalServiceAttachmentStream(avatarStream, avatarContentType, avatarLength, Optional.empty(), false, false, false, false, null, null));
+      avatar = Optional.of(new DeviceContactAvatar(avatarStream, avatarLength, avatarContentType));
     }
 
     if (details.verified != null) {

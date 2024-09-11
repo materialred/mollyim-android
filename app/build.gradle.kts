@@ -10,7 +10,6 @@ plugins {
   id("kotlin-parcelize")
   id("com.squareup.wire")
   id("molly")
-  id("licenses")
 }
 
 // Sort baseline.profm for reproducible builds
@@ -19,11 +18,13 @@ apply {
   from("fix-profm.gradle")
 }
 
-val canonicalVersionCode = 1421
-val canonicalVersionName = "7.8.1"
+val canonicalVersionCode = 1451
+val canonicalVersionName = "7.15.4"
+val currentHotfixVersion = 0
+val maxHotfixVersions = 100
 val mollyRevision = 1
 
-val postFixSize = 100
+val sourceVersionNameWithRevision = "${canonicalVersionName}-${mollyRevision}"
 
 val selectableVariants = listOf(
   "prodFossWebsiteDebug",
@@ -32,7 +33,6 @@ val selectableVariants = listOf(
   "prodFossStoreRelease",
   "prodGmsWebsiteDebug",
   "prodGmsWebsiteRelease",
-  "prodGmsWebsiteCanary",
   "prodGmsWebsiteInstrumentation",
   "prodGmsWebsiteSpinner",
   "stagingFossWebsiteDebug",
@@ -84,6 +84,8 @@ android {
   useLibrary("org.apache.http.legacy")
   testBuildType = "instrumentation"
 
+  android.bundle.language.enableSplit = false
+
   kotlinOptions {
     jvmTarget = signalKotlinJvmTarget
   }
@@ -125,13 +127,29 @@ android {
     targetCompatibility = signalJavaVersion
   }
 
-  packagingOptions {
-    resources {
-      excludes += setOf("LICENSE.txt", "LICENSE", "NOTICE", "asm-license.txt", "META-INF/LICENSE", "META-INF/LICENSE.md", "META-INF/NOTICE", "META-INF/LICENSE-notice.md", "META-INF/proguard/androidx-annotations.pro", "libsignal_jni.dylib", "signal_jni.dll")
-    }
+  packaging {
     jniLibs {
+      excludes += setOf(
+        "**/*.dylib",
+        "**/*.dll"
+      )
       // MOLLY: Compress native libs by default as APK is not split on ABIs
       useLegacyPackaging = true
+    }
+    resources {
+      excludes += setOf(
+        "LICENSE.txt",
+        "LICENSE",
+        "NOTICE",
+        "asm-license.txt",
+        "META-INF/LICENSE",
+        "META-INF/LICENSE.md",
+        "META-INF/NOTICE",
+        "META-INF/LICENSE-notice.md",
+        "META-INF/proguard/androidx-annotations.pro",
+        "**/*.dylib",
+        "**/*.dll"
+      )
     }
   }
 
@@ -141,16 +159,16 @@ android {
   }
 
   composeOptions {
-    kotlinCompilerExtensionVersion = "1.4.4"
+    kotlinCompilerExtensionVersion = "1.5.4"
   }
 
-  if (mollyRevision < 0 || mollyRevision >= postFixSize) {
-    throw GradleException("Molly revision $mollyRevision out of range")
+  if (mollyRevision < 0 || currentHotfixVersion < 0 || (mollyRevision + currentHotfixVersion) >= maxHotfixVersions) {
+    throw GradleException("Molly revision $mollyRevision or Hotfix version $currentHotfixVersion out of range")
   }
 
   defaultConfig {
-    versionCode = canonicalVersionCode * postFixSize + mollyRevision
-    versionName = if (ciEnabled) getCommitTag() else canonicalVersionName
+    versionCode = (canonicalVersionCode * maxHotfixVersions) + mollyRevision + currentHotfixVersion
+    versionName = if (ciEnabled) getCommitTag() else sourceVersionNameWithRevision
 
     minSdk = signalMinSdkVersion
     targetSdk = signalTargetSdkVersion
@@ -167,9 +185,10 @@ android {
 
     vectorDrawables.useSupportLibrary = true
 
-    // MOLLY: Ensure to add any new URLs to SignalServiceNetworkAccess.HOSTNAMES list
-    buildConfigField("long", "BUILD_TIMESTAMP", getLastCommitTimestamp() + "L")
+    // MOLLY: BUILD_TIMESTAMP may be zero in debug builds.
+    buildConfigField("long", "BUILD_OR_ZERO_TIMESTAMP", getLastCommitTimestamp() + "L")
     buildConfigField("String", "GIT_HASH", "\"${getGitHash()}\"")
+    // MOLLY: Ensure to add any new URLs to SignalServiceNetworkAccess.HOSTNAMES list
     buildConfigField("String", "SIGNAL_URL", "\"https://chat.signal.org\"")
     buildConfigField("String", "STORAGE_URL", "\"https://storage.signal.org\"")
     buildConfigField("String", "SIGNAL_CDN_URL", "\"https://cdn.signal.org\"")
@@ -197,11 +216,12 @@ android {
     buildConfigField("String", "SIGNAL_CAPTCHA_URL", "\"https://signalcaptchas.org/registration/generate.html\"")
     buildConfigField("String", "RECAPTCHA_PROOF_URL", "\"https://signalcaptchas.org/challenge/generate.html\"")
     buildConfigField("org.signal.libsignal.net.Network.Environment", "LIBSIGNAL_NET_ENV", "org.signal.libsignal.net.Network.Environment.PRODUCTION")
+    buildConfigField("int", "LIBSIGNAL_LOG_LEVEL", "org.signal.libsignal.protocol.logging.SignalProtocolLogger.INFO")
 
     // MOLLY: Rely on the built-in variables FLAVOR and BUILD_TYPE instead of BUILD_*_TYPE
     buildConfigField("String", "BADGE_STATIC_ROOT", "\"https://updates2.signal.org/static/badges/\"")
+    buildConfigField("String", "STRIPE_PUBLISHABLE_KEY", "\"pk_live_6cmGZopuTsV8novGgJJW9JpC00vLIgtQ1D\"")
     buildConfigField("boolean", "TRACING_ENABLED", "false")
-    buildConfigField("boolean", "MESSAGE_BACKUP_RESTORE_ENABLED", "false")
 
     ndk {
       //noinspection ChromeOsAbiSupport
@@ -209,12 +229,6 @@ android {
     }
 
     resourceConfigurations += listOf()
-
-    bundle {
-      language {
-        enableSplit = false
-      }
-    }
 
     testInstrumentationRunner = "org.thoughtcrime.securesms.testing.SignalTestRunner"
     testInstrumentationRunnerArguments["clearPackageData"] = "true"
@@ -249,6 +263,9 @@ android {
         "proguard/proguard-automation.pro",
         "proguard/proguard.cfg"
       )
+
+      buildConfigField("long", "BUILD_OR_ZERO_TIMESTAMP", "0L")
+      buildConfigField("String", "GIT_HASH", "\"abc123def456\"")
     }
 
     getByName("release") {
@@ -267,13 +284,6 @@ android {
     }
 
     create("spinner") {
-      initWith(getByName("debug"))
-      isDefault = false
-      isMinifyEnabled = false
-      matchingFallbacks += "debug"
-    }
-
-    create("canary") {
       initWith(getByName("debug"))
       isDefault = false
       isMinifyEnabled = false
@@ -341,10 +351,10 @@ android {
       buildConfigField("String", "SIGNAL_CAPTCHA_URL", "\"https://signalcaptchas.org/staging/registration/generate.html\"")
       buildConfigField("String", "RECAPTCHA_PROOF_URL", "\"https://signalcaptchas.org/staging/challenge/generate.html\"")
       buildConfigField("org.signal.libsignal.net.Network.Environment", "LIBSIGNAL_NET_ENV", "org.signal.libsignal.net.Network.Environment.STAGING")
+      buildConfigField("int", "LIBSIGNAL_LOG_LEVEL", "org.signal.libsignal.protocol.logging.SignalProtocolLogger.DEBUG")
 
       buildConfigField("String", "BUILD_ENVIRONMENT_TYPE", "\"Staging\"")
       buildConfigField("String", "STRIPE_PUBLISHABLE_KEY", "\"pk_test_sngOd8FnXNkpce9nPXawKrJD00kIDngZkD\"")
-      buildConfigField("boolean", "MESSAGE_BACKUP_RESTORE_ENABLED", "true")
     }
   }
 
@@ -381,6 +391,12 @@ android {
         variant.enable = false
       }
     }
+    onVariants { variant ->
+      // Include the test-only library on debug builds.
+      if (variant.buildType != "instrumentation") {
+        variant.packaging.jniLibs.excludes.add("**/libsignal_jni_testing.so")
+      }
+    }
   }
 
   val releaseDir = "$projectDir/src/release/java"
@@ -405,6 +421,7 @@ dependencies {
   implementation(project(":video"))
   implementation(project(":device-transfer"))
   implementation(project(":image-editor"))
+  implementation(project(":donations"))
   implementation(project(":contacts"))
   implementation(project(":qr"))
   implementation(project(":sticky-header-grid"))
@@ -440,6 +457,7 @@ dependencies {
   implementation(libs.androidx.lifecycle.viewmodel.savedstate)
   implementation(libs.androidx.lifecycle.common.java8)
   implementation(libs.androidx.lifecycle.reactivestreams.ktx)
+  implementation(libs.androidx.lifecycle.runtime.compose)
   implementation(libs.androidx.activity.compose)
   implementation(libs.androidx.camera.core)
   implementation(libs.androidx.camera.camera2)
@@ -453,6 +471,7 @@ dependencies {
   implementation(libs.androidx.profileinstaller)
   implementation(libs.androidx.asynclayoutinflater)
   implementation(libs.androidx.asynclayoutinflater.appcompat)
+  implementation(libs.androidx.emoji2)
   implementation(libs.androidx.webkit)
   "gmsImplementation"(libs.firebase.messaging) {
     exclude(group = "com.google.firebase", module = "firebase-core")
@@ -461,6 +480,7 @@ dependencies {
   }
   "gmsImplementation"(libs.google.play.services.maps)
   "gmsImplementation"(libs.google.play.services.auth)
+  "fossImplementation"(project(":libfakegms"))
   implementation(libs.bundles.media3)
   implementation(libs.conscrypt.android)
   implementation(libs.signal.aesgcmprovider)
@@ -485,6 +505,7 @@ dependencies {
   }
   implementation(libs.stream)
   implementation(libs.lottie)
+  implementation(libs.lottie.compose)
   implementation(libs.signal.android.database.sqlcipher)
   implementation(libs.androidx.sqlite)
   implementation(libs.google.ez.vcard) {
@@ -495,6 +516,10 @@ dependencies {
   implementation(libs.kotlinx.collections.immutable)
   implementation(libs.accompanist.permissions)
   implementation(libs.kotlin.stdlib.jdk8)
+  implementation(libs.kotlin.reflect)
+  "gmsImplementation"(libs.kotlinx.coroutines.play.services)
+  implementation(libs.kotlinx.coroutines.rx3)
+  implementation(libs.jackson.module.kotlin)
   implementation(libs.rxjava3.rxandroid)
   implementation(libs.rxjava3.rxkotlin)
   implementation(libs.rxdogtag)
@@ -505,11 +530,10 @@ dependencies {
   implementation(libs.molly.glide.webp.decoder)
   implementation(libs.gosimple.nbvcxz)
   "fossImplementation"("org.osmdroid:osmdroid-android:6.1.16")
-  "fossImplementation"(project(":libfakegms"))
+
+  "gmsImplementation"(project(":billing"))
 
   "spinnerImplementation"(project(":spinner"))
-
-  "canaryImplementation"(libs.square.leakcanary)
 
   "instrumentationImplementation"(libs.androidx.fragment.testing) {
     exclude(group = "androidx.test", module = "core")
@@ -549,6 +573,7 @@ dependencies {
   androidTestImplementation(testLibs.mockito.kotlin)
   androidTestImplementation(testLibs.mockk.android)
   androidTestImplementation(testLibs.square.okhttp.mockserver)
+  androidTestImplementation(testLibs.diff.utils)
 
   androidTestUtil(testLibs.androidx.test.orchestrator)
 }
@@ -560,42 +585,42 @@ fun assertIsGitRepo() {
 }
 
 fun getLastCommitTimestamp(): String {
-  assertIsGitRepo()
-
-  ByteArrayOutputStream().use { stdout ->
+  val stdout = ByteArrayOutputStream()
+  return try {
     exec {
       commandLine = listOf("git", "log", "-1", "--pretty=format:%ct000")
       standardOutput = stdout
     }
-
-    return stdout.toString().trim()
+    stdout.toString().trim()
+  } catch (e: Throwable) {
+    logger.warn("Failed to get Git commit timestamp: ${e.message}. Using mtime of current build script.")
+    buildFile.lastModified().toString()
   }
 }
 
 fun getGitHash(): String {
-  assertIsGitRepo()
-
-  ByteArrayOutputStream().use { stdout ->
+  val stdout = ByteArrayOutputStream()
+  return try {
     exec {
       commandLine = listOf("git", "rev-parse", "--short=12", "HEAD")
       standardOutput = stdout
     }
-
-    return stdout.toString().trim()
+    stdout.toString().trim()
+  } catch (e: Throwable) {
+    logger.warn("Failed to get Git commit hash: ${e.message}. Using default value.")
+    "abc123def456"
   }
 }
 
 fun getCommitTag(): String {
   assertIsGitRepo()
 
-  ByteArrayOutputStream().use { stdout ->
-    exec {
-      commandLine = listOf("git", "describe", "--tags", "--exact-match")
-      standardOutput = stdout
-    }
-
-    return stdout.toString().trim().takeIf { it.isNotEmpty() } ?: "untagged"
+  val stdout = ByteArrayOutputStream()
+  exec {
+    commandLine = listOf("git", "describe", "--tags", "--exact-match")
+    standardOutput = stdout
   }
+  return stdout.toString().trim().takeIf { it.isNotEmpty() } ?: "untagged"
 }
 
 tasks.withType<Test>().configureEach {
@@ -614,7 +639,8 @@ fun Project.languageList(): List<String> {
     .map { valuesFolderName -> valuesFolderName.replace("values-", "") }
     .filter { valuesFolderName -> valuesFolderName != "values" }
     .map { languageCode -> languageCode.replace("-r", "_") }
-    .distinct() + "en"
+    .distinct()
+    .sorted() + "en"
 }
 
 fun String.capitalize(): String {

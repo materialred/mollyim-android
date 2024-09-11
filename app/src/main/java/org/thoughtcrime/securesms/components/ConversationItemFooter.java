@@ -1,8 +1,6 @@
 package org.thoughtcrime.securesms.components;
 
-import android.Manifest;
 import android.animation.Animator;
-import android.annotation.SuppressLint;
 import android.content.Context;
 import android.content.res.TypedArray;
 import android.graphics.PorterDuff;
@@ -33,8 +31,7 @@ import org.thoughtcrime.securesms.conversation.v2.computed.FormattedDate;
 import org.thoughtcrime.securesms.database.SignalDatabase;
 import org.thoughtcrime.securesms.database.model.MessageRecord;
 import org.thoughtcrime.securesms.database.model.MmsMessageRecord;
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies;
-import org.thoughtcrime.securesms.permissions.Permissions;
+import org.thoughtcrime.securesms.dependencies.AppDependencies;
 import org.thoughtcrime.securesms.recipients.Recipient;
 import org.thoughtcrime.securesms.util.DateUtils;
 import org.thoughtcrime.securesms.util.MessageRecordUtil;
@@ -319,11 +316,6 @@ public class ConversationItemFooter extends ConstraintLayout {
       dateView.setText(DateUtils.getOnlyTimeString(getContext(), ((MmsMessageRecord) messageRecord).getScheduledDate()));
     } else {
       long timestamp = messageRecord.getTimestamp();
-      if (messageRecord.isEditMessage()) {
-        if (displayMode == ConversationItemDisplayMode.EditHistory.INSTANCE) {
-          timestamp = messageRecord.getDateSent();
-        }
-      }
       FormattedDate date = DateUtils.getDatelessRelativeTimeSpanFormattedDate(getContext(), locale, timestamp);
       String dateLabel = date.getValue();
       if (displayMode != ConversationItemDisplayMode.Detailed.INSTANCE && messageRecord.isEditMessage() && messageRecord.isLatestRevision()) {
@@ -355,7 +347,7 @@ public class ConversationItemFooter extends ConstraintLayout {
         timerView.startAnimation();
 
         if (timerView.isExpired()) {
-          ApplicationDependencies.getExpiringMessageManager().checkSchedule();
+          AppDependencies.getExpiringMessageManager().checkSchedule();
         }
       } else if (!messageRecord.isOutgoing() && !messageRecord.isMediaPending()) {
         SignalExecutors.BOUNDED.execute(() -> {
@@ -363,7 +355,7 @@ public class ConversationItemFooter extends ConstraintLayout {
           long    now = System.currentTimeMillis();
 
           SignalDatabase.messages().markExpireStarted(id, now);
-          ApplicationDependencies.getExpiringMessageManager().scheduleDeletion(id, true, now, messageRecord.getExpiresIn());
+          AppDependencies.getExpiringMessageManager().scheduleDeletion(id, true, now, messageRecord.getExpiresIn());
         });
       }
     } else {

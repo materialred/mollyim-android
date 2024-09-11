@@ -11,7 +11,7 @@ import android.view.inspector.WindowInspector
 import org.signal.core.util.concurrent.SignalExecutors
 import org.signal.core.util.logging.Log
 import org.thoughtcrime.securesms.biometric.BiometricDialogFragment
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies
+import org.thoughtcrime.securesms.dependencies.AppDependencies
 import org.thoughtcrime.securesms.keyvalue.SignalStore
 import org.thoughtcrime.securesms.migrations.ApplicationMigrations
 import org.thoughtcrime.securesms.util.ServiceUtil
@@ -20,7 +20,7 @@ private val TAG = Log.tag(ScreenLockController.javaClass)
 
 object ScreenLockController {
 
-  private const val SCREEN_LOCK_TIMEOUT_SHORT_MS = 5_000
+  private const val SCREEN_LOCK_TIMEOUT_SHORT_MS = 7_000
   private const val SCREEN_LOCK_TIMEOUT_LONG_MS = 60_000
 
   private const val APP_BACKGROUNDED_EVENT_DELAY_MS = 700
@@ -99,9 +99,9 @@ object ScreenLockController {
       .mapNotNull { it.topActivity }
 
   private fun clearReplyActionFromNotifications(context: Context) {
-    if (!ApplicationMigrations.isUpdate(context) && SignalStore.settings().messageNotificationsPrivacy.isDisplayMessage) {
+    if (!ApplicationMigrations.isUpdate(context) && SignalStore.settings.messageNotificationsPrivacy.isDisplayMessage) {
       SignalExecutors.BOUNDED.execute {
-        ApplicationDependencies.getMessageNotifier().updateNotification(context)
+        AppDependencies.messageNotifier.updateNotification(context)
       }
     }
   }
@@ -160,7 +160,7 @@ object ScreenLockController {
     }
 }
 
-@SuppressLint("PrivateApi")
+@SuppressLint("PrivateApi", "DiscouragedPrivateApi")
 object WindowInspectorLegacy {
   private val wmClass = Class.forName("android.view.WindowManagerGlobal")
   private val lockField = wmClass.getDeclaredField("mLock").apply { isAccessible = true }

@@ -6,6 +6,7 @@
 package org.thoughtcrime.securesms.backup.v2.database
 
 import android.database.Cursor
+import okio.ByteString
 import okio.ByteString.Companion.toByteString
 import org.signal.core.util.select
 import org.signal.ringrtc.CallLinkRootKey
@@ -30,11 +31,17 @@ fun CallLinkTable.getCallLinksForBackup(): BackupCallLinkIterator {
   return BackupCallLinkIterator(cursor)
 }
 
-fun CallLinkTable.restoreFromBackup(callLink: CallLink): RecipientId {
+fun CallLinkTable.restoreFromBackup(callLink: CallLink): RecipientId? {
+  val rootKey: CallLinkRootKey
+  try {
+    rootKey = CallLinkRootKey(callLink.rootKey.toByteArray())
+  } catch (e: Exception) {
+    return null
+  }
   return SignalDatabase.callLinks.insertCallLink(
     CallLinkTable.CallLink(
       recipientId = RecipientId.UNKNOWN,
-      roomId = CallLinkRoomId.fromCallLinkRootKey(CallLinkRootKey(callLink.rootKey.toByteArray())),
+      roomId = CallLinkRoomId.fromCallLinkRootKey(rootKey),
       credentials = CallLinkCredentials(callLink.rootKey.toByteArray(), callLink.adminKey?.toByteArray()),
       state = SignalCallLinkState(
         name = callLink.name,
@@ -63,10 +70,12 @@ class BackupCallLinkIterator(private val cursor: Cursor) : Iterator<BackupRecipi
     return BackupRecipient(
       id = callLink.recipientId.toLong(),
       callLink = CallLink(
-        rootKey = callLink.credentials!!.linkKeyBytes.toByteString(),
-        adminKey = callLink.credentials.adminPassBytes?.toByteString(),
+        rootKey = callLink.credentials?.linkKeyBytes?.toByteString() ?: ByteString.EMPTY,
+        adminKey = callLink.credentials?.adminPassBytes?.toByteString(),
         name = callLink.state.name,
-        expirationMs = callLink.state.expiration.toEpochMilli(),
+        expirationMs = try {
+          callLink.state.expiration.toEpochMilli()
+        } catch (e: ArithmeticException) { Long.MAX_VALUE },
         restrictions = callLink.state.restrictions.toBackup()
       )
     )

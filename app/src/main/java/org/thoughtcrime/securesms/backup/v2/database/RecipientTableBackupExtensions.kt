@@ -7,6 +7,7 @@ package org.thoughtcrime.securesms.backup.v2.database
 
 import android.content.ContentValues
 import android.database.Cursor
+import androidx.core.content.contentValuesOf
 import okio.ByteString.Companion.toByteString
 import org.signal.core.util.Base64
 import org.signal.core.util.SqlUtil
@@ -44,7 +45,7 @@ import org.thoughtcrime.securesms.database.RecipientTable
 import org.thoughtcrime.securesms.database.RecipientTableCursorUtil
 import org.thoughtcrime.securesms.database.SignalDatabase
 import org.thoughtcrime.securesms.database.model.databaseprotos.RecipientExtras
-import org.thoughtcrime.securesms.dependencies.ApplicationDependencies
+import org.thoughtcrime.securesms.dependencies.AppDependencies
 import org.thoughtcrime.securesms.groups.GroupId
 import org.thoughtcrime.securesms.groups.v2.processing.GroupsV2StateProcessor
 import org.thoughtcrime.securesms.keyvalue.SignalStore
@@ -86,6 +87,8 @@ fun RecipientTable.getContactsForBackup(selfId: Long): BackupContactIterator {
       RecipientTable.PROFILE_FAMILY_NAME,
       RecipientTable.PROFILE_JOINED_NAME,
       RecipientTable.MUTE_UNTIL,
+      RecipientTable.CHAT_COLORS,
+      RecipientTable.CUSTOM_CHAT_COLORS_ID,
       RecipientTable.EXTRAS
     )
     .from(RecipientTable.TABLE_NAME)
@@ -164,8 +167,8 @@ fun RecipientTable.clearAllDataForBackupRestore() {
   SqlUtil.resetAutoIncrementValue(writableDatabase, RecipientTable.TABLE_NAME)
 
   RecipientId.clearCache()
-  ApplicationDependencies.getRecipientCache().clear()
-  ApplicationDependencies.getRecipientCache().clearSelf()
+  AppDependencies.recipientCache.clear()
+  AppDependencies.recipientCache.clearSelf()
 }
 
 fun RecipientTable.restoreContactFromBackup(contact: Contact): RecipientId {
@@ -176,23 +179,30 @@ fun RecipientTable.restoreContactFromBackup(contact: Contact): RecipientId {
   )
 
   val profileKey = contact.profileKey?.toByteArray()
+  val values = contentValuesOf(
+    RecipientTable.BLOCKED to contact.blocked,
+    RecipientTable.HIDDEN to contact.visibility.toLocal().serialize(),
+    RecipientTable.TYPE to RecipientTable.RecipientType.INDIVIDUAL.id,
+    RecipientTable.PROFILE_FAMILY_NAME to contact.profileFamilyName,
+    RecipientTable.PROFILE_GIVEN_NAME to contact.profileGivenName,
+    RecipientTable.PROFILE_JOINED_NAME to ProfileName.fromParts(contact.profileGivenName, contact.profileFamilyName).toString(),
+    RecipientTable.PROFILE_KEY to if (profileKey == null) null else Base64.encodeWithPadding(profileKey),
+    RecipientTable.PROFILE_SHARING to contact.profileSharing.toInt(),
+    RecipientTable.USERNAME to contact.username,
+    RecipientTable.EXTRAS to contact.toLocalExtras().encode()
+  )
+
+  if (contact.registered != null) {
+    values.put(RecipientTable.UNREGISTERED_TIMESTAMP, 0L)
+    values.put(RecipientTable.REGISTERED, RecipientTable.RegisteredState.REGISTERED.id)
+  } else if (contact.notRegistered != null) {
+    values.put(RecipientTable.UNREGISTERED_TIMESTAMP, contact.notRegistered.unregisteredTimestamp)
+    values.put(RecipientTable.REGISTERED, RecipientTable.RegisteredState.NOT_REGISTERED.id)
+  }
 
   writableDatabase
     .update(RecipientTable.TABLE_NAME)
-    .values(
-      RecipientTable.BLOCKED to contact.blocked,
-      RecipientTable.HIDDEN to contact.hidden,
-      RecipientTable.TYPE to RecipientTable.RecipientType.INDIVIDUAL.id,
-      RecipientTable.PROFILE_FAMILY_NAME to contact.profileFamilyName.nullIfBlank(),
-      RecipientTable.PROFILE_GIVEN_NAME to contact.profileGivenName.nullIfBlank(),
-      RecipientTable.PROFILE_JOINED_NAME to ProfileName.fromParts(contact.profileGivenName.nullIfBlank(), contact.profileFamilyName.nullIfBlank()).toString().nullIfBlank(),
-      RecipientTable.PROFILE_KEY to if (profileKey == null) null else Base64.encodeWithPadding(profileKey),
-      RecipientTable.PROFILE_SHARING to contact.profileSharing.toInt(),
-      RecipientTable.REGISTERED to contact.registered.toLocalRegisteredState().id,
-      RecipientTable.USERNAME to contact.username,
-      RecipientTable.UNREGISTERED_TIMESTAMP to contact.unregisteredTimestamp,
-      RecipientTable.EXTRAS to contact.toLocalExtras().encode()
-    )
+    .values(values)
     .where("${RecipientTable.ID} = ?", id)
     .run()
 
@@ -201,7 +211,7 @@ fun RecipientTable.restoreContactFromBackup(contact: Contact): RecipientId {
 
 fun RecipientTable.restoreReleaseNotes(): RecipientId {
   val releaseChannelId: RecipientId = insertReleaseChannelRecipient()
-  SignalStore.releaseChannelValues().setReleaseChannelRecipientId(releaseChannelId)
+  SignalStore.releaseChannel.setReleaseChannelRecipientId(releaseChannelId)
 
   setProfileName(releaseChannelId, ProfileName.asGiven("Signal"))
   setMuted(releaseChannelId, Long.MAX_VALUE)
@@ -212,7 +222,7 @@ fun RecipientTable.restoreGroupFromBackup(group: Group): RecipientId {
   val masterKey = GroupMasterKey(group.masterKey.toByteArray())
   val groupId = GroupId.v2(masterKey)
 
-  val operations = ApplicationDependencies.getGroupsV2Operations().forGroup(GroupSecretParams.deriveFromMasterKey(masterKey))
+  val operations = AppDependencies.groupsV2Operations.forGroup(GroupSecretParams.deriveFromMasterKey(masterKey))
   val decryptedState = if (group.snapshot == null) {
     DecryptedGroup(revision = GroupsV2StateProcessor.RESTORE_PLACEHOLDER_REVISION)
   } else {
@@ -232,12 +242,20 @@ fun RecipientTable.restoreGroupFromBackup(group: Group): RecipientId {
   }
 
   val recipientId = writableDatabase.insert(RecipientTable.TABLE_NAME, null, values)
-  val restoredId = SignalDatabase.groups.create(masterKey, decryptedState)
+  val restoredId = SignalDatabase.groups.create(masterKey, decryptedState, groupSendEndorsements = null)
   if (restoredId != null) {
     SignalDatabase.groups.setShowAsStoryState(restoredId, group.storySendMode.toGroupShowAsStoryState())
   }
 
   return RecipientId.from(recipientId)
+}
+
+private fun Contact.Visibility.toLocal(): Recipient.HiddenState {
+  return when (this) {
+    Contact.Visibility.VISIBLE -> Recipient.HiddenState.NOT_HIDDEN
+    Contact.Visibility.HIDDEN -> Recipient.HiddenState.HIDDEN
+    Contact.Visibility.HIDDEN_MESSAGE_REQUEST -> Recipient.HiddenState.HIDDEN_MESSAGE_REQUEST
+  }
 }
 
 private fun Group.AccessControl.AccessRequired.toLocal(): AccessControl.AccessRequired {
@@ -285,22 +303,23 @@ private fun Member.Role.toSnapshot(): Group.Member.Role {
 }
 
 private fun DecryptedGroup.toSnapshot(): Group.GroupSnapshot? {
-  if (revision == GroupsV2StateProcessor.RESTORE_PLACEHOLDER_REVISION || revision == GroupsV2StateProcessor.PLACEHOLDER_REVISION) {
+  if (this.revision == GroupsV2StateProcessor.RESTORE_PLACEHOLDER_REVISION || this.revision == GroupsV2StateProcessor.PLACEHOLDER_REVISION) {
     return null
   }
+
   return Group.GroupSnapshot(
-    title = Group.GroupAttributeBlob(title = title),
-    avatarUrl = avatar,
-    disappearingMessagesTimer = Group.GroupAttributeBlob(disappearingMessagesDuration = disappearingMessagesTimer?.duration ?: 0),
-    accessControl = accessControl?.toSnapshot(),
-    version = revision,
-    members = members.map { it.toSnapshot() },
-    membersPendingProfileKey = pendingMembers.map { it.toSnapshot() },
-    membersPendingAdminApproval = requestingMembers.map { it.toSnapshot() },
-    inviteLinkPassword = inviteLinkPassword,
-    description = Group.GroupAttributeBlob(descriptionText = description),
-    announcements_only = isAnnouncementGroup == EnabledState.ENABLED,
-    members_banned = bannedMembers.map { it.toSnapshot() }
+    title = Group.GroupAttributeBlob(title = this.title),
+    avatarUrl = this.avatar,
+    disappearingMessagesTimer = Group.GroupAttributeBlob(disappearingMessagesDuration = this.disappearingMessagesTimer?.duration ?: 0),
+    accessControl = this.accessControl?.toSnapshot(),
+    version = this.revision,
+    members = this.members.map { it.toSnapshot() },
+    membersPendingProfileKey = this.pendingMembers.map { it.toSnapshot() },
+    membersPendingAdminApproval = this.requestingMembers.map { it.toSnapshot() },
+    inviteLinkPassword = this.inviteLinkPassword,
+    description = this.description.takeUnless { it.isBlank() }?.let { Group.GroupAttributeBlob(descriptionText = it) },
+    announcements_only = this.isAnnouncementGroup == EnabledState.ENABLED,
+    members_banned = this.bannedMembers.map { it.toSnapshot() }
   )
 }
 
@@ -325,58 +344,58 @@ private fun Group.MemberPendingProfileKey.toLocal(operations: GroupsV2Operations
 private fun DecryptedPendingMember.toSnapshot(): Group.MemberPendingProfileKey {
   return Group.MemberPendingProfileKey(
     member = Group.Member(
-      userId = serviceIdBytes,
-      role = role.toSnapshot()
+      userId = this.serviceIdBytes,
+      role = this.role.toSnapshot()
     ),
-    addedByUserId = addedByAci,
-    timestamp = timestamp
+    addedByUserId = this.addedByAci,
+    timestamp = this.timestamp
   )
 }
 
 private fun Group.MemberPendingAdminApproval.toLocal(): DecryptedRequestingMember {
   return DecryptedRequestingMember(
-    aciBytes = userId,
-    profileKey = profileKey,
-    timestamp = timestamp
+    aciBytes = this.userId,
+    profileKey = this.profileKey,
+    timestamp = this.timestamp
   )
 }
 
 private fun DecryptedRequestingMember.toSnapshot(): Group.MemberPendingAdminApproval {
   return Group.MemberPendingAdminApproval(
-    userId = aciBytes,
-    profileKey = profileKey,
-    timestamp = timestamp
+    userId = this.aciBytes,
+    profileKey = this.profileKey,
+    timestamp = this.timestamp
   )
 }
 
 private fun Group.MemberBanned.toLocal(): DecryptedBannedMember {
   return DecryptedBannedMember(
-    serviceIdBytes = userId,
-    timestamp = timestamp
+    serviceIdBytes = this.userId,
+    timestamp = this.timestamp
   )
 }
 
 private fun DecryptedBannedMember.toSnapshot(): Group.MemberBanned {
   return Group.MemberBanned(
-    userId = serviceIdBytes,
-    timestamp = timestamp
+    userId = this.serviceIdBytes,
+    timestamp = this.timestamp
   )
 }
 
 private fun Group.GroupSnapshot.toDecryptedGroup(operations: GroupsV2Operations.GroupOperations): DecryptedGroup {
   return DecryptedGroup(
-    title = title?.title ?: "",
-    avatar = avatarUrl,
-    disappearingMessagesTimer = DecryptedTimer(duration = disappearingMessagesTimer?.disappearingMessagesDuration ?: 0),
-    accessControl = accessControl?.toLocal(),
-    revision = version,
-    members = members.map { member -> member.toLocal() },
-    pendingMembers = membersPendingProfileKey.map { pending -> pending.toLocal(operations) },
-    requestingMembers = membersPendingAdminApproval.map { requesting -> requesting.toLocal() },
-    inviteLinkPassword = inviteLinkPassword,
-    description = description?.descriptionText ?: "",
-    isAnnouncementGroup = if (announcements_only) EnabledState.ENABLED else EnabledState.DISABLED,
-    bannedMembers = members_banned.map { it.toLocal() }
+    title = this.title?.title ?: "",
+    avatar = this.avatarUrl,
+    disappearingMessagesTimer = DecryptedTimer(duration = this.disappearingMessagesTimer?.disappearingMessagesDuration ?: 0),
+    accessControl = this.accessControl?.toLocal(),
+    revision = this.version,
+    members = this.members.map { member -> member.toLocal() },
+    pendingMembers = this.membersPendingProfileKey.map { pending -> pending.toLocal(operations) },
+    requestingMembers = this.membersPendingAdminApproval.map { requesting -> requesting.toLocal() },
+    inviteLinkPassword = this.inviteLinkPassword,
+    description = this.description?.descriptionText ?: "",
+    isAnnouncementGroup = if (this.announcements_only) EnabledState.ENABLED else EnabledState.DISABLED,
+    bannedMembers = this.members_banned.map { it.toLocal() }
   )
 }
 
@@ -419,28 +438,41 @@ class BackupContactIterator(private val cursor: Cursor, private val selfId: Long
       return null
     }
 
+    val contactBuilder = Contact.Builder()
+      .aci(aci?.rawUuid?.toByteArray()?.toByteString())
+      .pni(pni?.rawUuid?.toByteArray()?.toByteString())
+      .username(cursor.requireString(RecipientTable.USERNAME))
+      .e164(cursor.requireString(RecipientTable.E164)?.e164ToLong())
+      .blocked(cursor.requireBoolean(RecipientTable.BLOCKED))
+      .visibility(Recipient.HiddenState.deserialize(cursor.requireInt(RecipientTable.HIDDEN)).toRemote())
+      .profileKey(if (profileKey != null) Base64.decode(profileKey).toByteString() else null)
+      .profileSharing(cursor.requireBoolean(RecipientTable.PROFILE_SHARING))
+      .profileGivenName(cursor.requireString(RecipientTable.PROFILE_GIVEN_NAME))
+      .profileFamilyName(cursor.requireString(RecipientTable.PROFILE_FAMILY_NAME))
+      .hideStory(extras?.hideStory() ?: false)
+
+    if (registeredState == RecipientTable.RegisteredState.REGISTERED) {
+      contactBuilder.registered = Contact.Registered()
+    } else {
+      contactBuilder.notRegistered = Contact.NotRegistered(unregisteredTimestamp = cursor.requireLong(RecipientTable.UNREGISTERED_TIMESTAMP))
+    }
+
     return BackupRecipient(
       id = id,
-      contact = Contact(
-        aci = aci?.rawUuid?.toByteArray()?.toByteString(),
-        pni = pni?.rawUuid?.toByteArray()?.toByteString(),
-        username = cursor.requireString(RecipientTable.USERNAME),
-        e164 = cursor.requireString(RecipientTable.E164)?.e164ToLong(),
-        blocked = cursor.requireBoolean(RecipientTable.BLOCKED),
-        hidden = cursor.requireBoolean(RecipientTable.HIDDEN),
-        registered = registeredState.toContactRegisteredState(),
-        unregisteredTimestamp = cursor.requireLong(RecipientTable.UNREGISTERED_TIMESTAMP),
-        profileKey = if (profileKey != null) Base64.decode(profileKey).toByteString() else null,
-        profileSharing = cursor.requireBoolean(RecipientTable.PROFILE_SHARING),
-        profileGivenName = cursor.requireString(RecipientTable.PROFILE_GIVEN_NAME).nullIfBlank(),
-        profileFamilyName = cursor.requireString(RecipientTable.PROFILE_FAMILY_NAME).nullIfBlank(),
-        hideStory = extras?.hideStory() ?: false
-      )
+      contact = contactBuilder.build()
     )
   }
 
   override fun close() {
     cursor.close()
+  }
+}
+
+private fun Recipient.HiddenState.toRemote(): Contact.Visibility {
+  return when (this) {
+    Recipient.HiddenState.NOT_HIDDEN -> return Contact.Visibility.VISIBLE
+    Recipient.HiddenState.HIDDEN -> return Contact.Visibility.HIDDEN
+    Recipient.HiddenState.HIDDEN_MESSAGE_REQUEST -> return Contact.Visibility.HIDDEN_MESSAGE_REQUEST
   }
 }
 
@@ -490,22 +522,6 @@ private fun String.e164ToLong(): Long? {
   return fixed.toLongOrNull()
 }
 
-private fun RecipientTable.RegisteredState.toContactRegisteredState(): Contact.Registered {
-  return when (this) {
-    RecipientTable.RegisteredState.REGISTERED -> Contact.Registered.REGISTERED
-    RecipientTable.RegisteredState.NOT_REGISTERED -> Contact.Registered.NOT_REGISTERED
-    RecipientTable.RegisteredState.UNKNOWN -> Contact.Registered.UNKNOWN
-  }
-}
-
-private fun Contact.Registered.toLocalRegisteredState(): RecipientTable.RegisteredState {
-  return when (this) {
-    Contact.Registered.REGISTERED -> RecipientTable.RegisteredState.REGISTERED
-    Contact.Registered.NOT_REGISTERED -> RecipientTable.RegisteredState.NOT_REGISTERED
-    Contact.Registered.UNKNOWN -> RecipientTable.RegisteredState.UNKNOWN
-  }
-}
-
 private fun GroupTable.ShowAsStoryState.toGroupStorySendMode(): Group.StorySendMode {
   return when (this) {
     GroupTable.ShowAsStoryState.ALWAYS -> Group.StorySendMode.ENABLED
@@ -525,6 +541,6 @@ private fun Group.StorySendMode.toGroupShowAsStoryState(): GroupTable.ShowAsStor
 private val Contact.formattedE164: String?
   get() {
     return e164?.let {
-      PhoneNumberFormatter.get(ApplicationDependencies.getApplication()).format(e164.toString())
+      PhoneNumberFormatter.get(AppDependencies.application).format(e164.toString())
     }
   }

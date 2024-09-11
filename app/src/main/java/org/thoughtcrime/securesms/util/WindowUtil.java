@@ -43,6 +43,10 @@ public final class WindowUtil {
     clearSystemUiFlags(window, View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR);
   }
 
+  public static void clearTranslucentNavigationBar(@NonNull Window window) {
+    window.clearFlags(WindowManager.LayoutParams.FLAG_TRANSLUCENT_NAVIGATION);
+  }
+
   public static void setLightNavigationBar(@NonNull Window window) {
     if (Build.VERSION.SDK_INT < 27) return;
 
@@ -62,6 +66,8 @@ public final class WindowUtil {
   }
 
   public static void setLightStatusBarFromTheme(@NonNull Activity activity) {
+    if (Build.VERSION.SDK_INT < 23) return;
+
     final boolean isLightStatusBar = ThemeUtil.getThemedBoolean(activity, android.R.attr.windowLightStatusBar);
 
     if (isLightStatusBar) setLightStatusBar(activity.getWindow());
@@ -69,10 +75,14 @@ public final class WindowUtil {
   }
 
   public static void clearLightStatusBar(@NonNull Window window) {
+    if (Build.VERSION.SDK_INT < 23) return;
+
     clearSystemUiFlags(window, View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
   }
 
   public static void setLightStatusBar(@NonNull Window window) {
+    if (Build.VERSION.SDK_INT < 23) return;
+
     setSystemUiFlags(window, View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
   }
 

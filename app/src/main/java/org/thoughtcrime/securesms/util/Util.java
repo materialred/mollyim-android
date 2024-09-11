@@ -352,14 +352,15 @@ public class Util {
    * @return The amount of time (in ms) until this build of Signal will be considered 'expired'.
    *         Takes into account both the build age as well as any remote deprecation values.
    */
-  public static long getTimeUntilBuildExpiry() {
+  public static long getTimeUntilBuildExpiry(long currentTime) {
     if (SignalStore.misc().isClientDeprecated()) {
       return 0;
     }
 
-    long buildAge                   = System.currentTimeMillis() - BuildConfig.BUILD_TIMESTAMP;
+    long buildTimestamp             = BuildConfig.BUILD_OR_ZERO_TIMESTAMP;
+    long buildAge                   = (buildTimestamp > 0) ? currentTime - buildTimestamp : 0;
     long timeUntilBuildDeprecation  = BUILD_LIFESPAN - buildAge;
-    long timeUntilRemoteDeprecation = RemoteDeprecation.getTimeUntilDeprecation();
+    long timeUntilRemoteDeprecation = RemoteDeprecation.getTimeUntilDeprecation(currentTime);
 
     if (timeUntilRemoteDeprecation != -1) {
       long timeUntilDeprecation = Math.min(timeUntilBuildDeprecation, timeUntilRemoteDeprecation);

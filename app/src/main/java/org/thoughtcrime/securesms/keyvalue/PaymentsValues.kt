@@ -1,6 +1,5 @@
 package org.thoughtcrime.securesms.keyvalue
 
-import androidx.annotation.VisibleForTesting
 import androidx.annotation.WorkerThread
 import androidx.lifecycle.LiveData
 import androidx.lifecycle.MutableLiveData
@@ -26,11 +25,12 @@ import java.util.Arrays
 import java.util.Currency
 import java.util.Locale
 
-internal class PaymentsValues internal constructor(store: KeyValueStore) : SignalStoreValues(store) {
+class PaymentsValues internal constructor(store: KeyValueStore) : SignalStoreValues(store) {
 
   companion object {
     private val TAG = Log.tag(PaymentsValues::class.java)
 
+    private const val MOB_PAYMENTS_ENABLED = "mob_payments_enabled"
     private const val PAYMENTS_ENTROPY = "payments_entropy"
     private const val MOB_LEDGER = "mob_ledger"
     private const val PAYMENTS_CURRENT_CURRENCY = "payments_current_currency"
@@ -48,9 +48,6 @@ internal class PaymentsValues internal constructor(store: KeyValueStore) : Signa
     private const val SHOW_SAVE_RECOVERY_PHRASE = "mob_show_save_recovery_phrase"
 
     private val LARGE_BALANCE_THRESHOLD = Money.mobileCoin(BigDecimal.valueOf(500))
-
-    @VisibleForTesting
-    const val MOB_PAYMENTS_ENABLED = "mob_payments_enabled"
   }
 
   @get:JvmName("isPaymentLockEnabled")
@@ -219,8 +216,8 @@ internal class PaymentsValues internal constructor(store: KeyValueStore) : Signa
 
   fun showUpdatePinInfoCard(): Boolean {
     return if (userHasLargeBalance() &&
-      SignalStore.svr().hasPin() &&
-      !SignalStore.svr().hasOptedOut() && SignalStore.pinValues().keyboardType == PinKeyboardType.NUMERIC
+      SignalStore.svr.hasPin() &&
+      !SignalStore.svr.hasOptedOut() && SignalStore.pin.keyboardType == PinKeyboardType.NUMERIC
     ) {
       store.getBoolean(SHOW_CASHING_OUT_INFO_CARD, true)
     } else {
@@ -277,7 +274,7 @@ internal class PaymentsValues internal constructor(store: KeyValueStore) : Signa
   }
 
   private fun determineCurrency(): Currency {
-    val localE164: String = SignalStore.account().e164 ?: ""
+    val localE164: String = SignalStore.account.e164 ?: ""
 
     return Util.firstNonNull(
       CurrencyUtil.getCurrencyByE164(localE164),
@@ -332,7 +329,9 @@ internal class PaymentsValues internal constructor(store: KeyValueStore) : Signa
   }
 
   enum class WalletRestoreResult {
-    ENTROPY_CHANGED, ENTROPY_UNCHANGED, MNEMONIC_ERROR
+    ENTROPY_CHANGED,
+    ENTROPY_UNCHANGED,
+    MNEMONIC_ERROR
   }
 
   private fun userHasLargeBalance(): Boolean {

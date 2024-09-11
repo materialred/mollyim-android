@@ -4,6 +4,7 @@ import android.net.Uri
 import android.os.Parcel
 import org.thoughtcrime.securesms.blurhash.BlurHash
 import org.thoughtcrime.securesms.database.AttachmentTable
+import java.util.UUID
 
 /**
  * An attachment that represents where an attachment used to be. Useful when you need to know that
@@ -12,7 +13,7 @@ import org.thoughtcrime.securesms.database.AttachmentTable
  * quote them and know their contentType even though the media has been deleted.
  */
 class TombstoneAttachment : Attachment {
-  constructor(contentType: String, quote: Boolean) : super(
+  constructor(contentType: String?, quote: Boolean) : super(
     contentType = contentType,
     quote = quote,
     transferState = AttachmentTable.TRANSFER_PROGRESS_DONE,
@@ -35,7 +36,8 @@ class TombstoneAttachment : Attachment {
     stickerLocator = null,
     blurHash = null,
     audioHash = null,
-    transformProperties = null
+    transformProperties = null,
+    uuid = null
   )
 
   constructor(
@@ -49,7 +51,8 @@ class TombstoneAttachment : Attachment {
     voiceNote: Boolean = false,
     borderless: Boolean = false,
     gif: Boolean = false,
-    quote: Boolean
+    quote: Boolean,
+    uuid: UUID?
   ) : super(
     contentType = contentType ?: "",
     quote = quote,
@@ -73,7 +76,8 @@ class TombstoneAttachment : Attachment {
     stickerLocator = null,
     blurHash = BlurHash.parseOrNull(blurHash),
     audioHash = null,
-    transformProperties = null
+    transformProperties = null,
+    uuid = uuid
   )
 
   constructor(parcel: Parcel) : super(parcel)
