@@ -22,7 +22,7 @@ jobs:
         run: |
           git 
           git remote add upstream https://github.com/mollyim/mollyim-android.git
-          git fetch upstream
+          git fetch main
           git merge --ff-only upstream/main
 
       - name: Push changes
