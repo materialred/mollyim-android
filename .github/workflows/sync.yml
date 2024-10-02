@@ -16,7 +16,7 @@ jobs:
         with:
           ref: dev
           fetch-depth: 0
-          token: ${{ secrets.PUBLISH_PAT || secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.SYNC|| secrets.GITHUB_TOKEN }}
 
       - name: Fetch and merge upstream
         run: |
